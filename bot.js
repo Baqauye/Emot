@@ -6,7 +6,7 @@ const localStorage = new LocalStorage('./scratch');
 const token = '8062033173:AAHA7WO3tEPGRxwCcZrM6N8vs6yQf4r0WGA';
 const bot = new TelegramBot(token, { polling: true });
 
-// --- DATA (No Changes) ---
+// --- DATA ---
 const emotions = [
   { name: "Joy", color: "yellow", tips: ["Write down what caused this joy to revisit the moment.", "Share your joy with someone close.", "Dance or move your body to express this energy."], emoji: "😊", intensity: ["Cheerful", "Happy", "Ecstatic", "Euphoric"] },
   { name: "Sadness", color: "blue", tips: ["Try writing your thoughts in a journal.", "Allow yourself some rest and relaxation.", "Listen to calming music.", "Reach out to a friend."], emoji: "😢", intensity: ["Melancholy", "Sad", "Heartbroken", "Devastated"] },
@@ -23,8 +23,7 @@ const achievements = [
   { name: "Zen Master", icon: "🧘", description: "Completed 50 breathing exercises" }
 ];
 
-
-// --- HELPER FUNCTIONS (No Changes) ---
+// --- HELPER FUNCTIONS ---
 function getUserData(userId) {
   const data = localStorage.getItem(`user_${userId}`);
   return data ? JSON.parse(data) : {
@@ -70,23 +69,39 @@ function checkAchievements(userId, newHistory) {
     return null;
 }
 
+// --- COMMAND HANDLERS ---
+bot.onText(/\/start/, (msg) => {
+  const chatId = msg.chat.id;
+  
+  const welcomeMessage = `😊 *Welcome to Emotions in Check!* 💙\n\n` +
+    `Simply select an emotion, write if you'd like, and get helpful tips. ` +
+    `It also tracks your streaks and achievements to keep you motivated! 🏆\n\n` +
+    `*Quick commands:*\n` +
+    `- /emotion - Start tracking\n` +
+    `- Breathing exercises 🧘\n` +
+    `- Mood history 📖\n` +
+    `- Done button ✅ to exit\n\n` +
+    `Perfect for daily emotional check-ins! 💙`;
 
-// --- MAIN COMMAND HANDLER (No Changes) ---
+  bot.sendMessage(chatId, welcomeMessage, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "Get Started ➡️", callback_data: "start_tracking" }]
+      ]
+    }
+  });
+});
+
 bot.onText(/\/emotion/, (msg) => {
   const chatId = msg.chat.id;
   const userId = msg.from.id;
   const userData = getUserData(userId);
   
-  // The first message is sent normally. Subsequent interactions will edit this message.
   showHomeView(chatId, userId, userData);
 });
 
-// --- MODIFIED VIEW FUNCTIONS ---
-
-/**
- * MODIFIED: This function can now either send a new message or edit an existing one.
- * If messageId is provided, it edits. Otherwise, it sends a new message.
- */
+// --- VIEW FUNCTIONS ---
 function showHomeView(chatId, userId, userData, messageId = null) {
   userData.currentState = 'home';
   saveUserData(userId, userData);
@@ -99,24 +114,20 @@ function showHomeView(chatId, userId, userData, messageId = null) {
       [{ text: `🧘 Breathing Exercises (${userData.breathingCount})`, callback_data: "breathing_exercise" }],
       [{ text: "📖 History", callback_data: "view_history" }],
       [{ text: "🏆 Achievements", callback_data: "view_achievements" }],
-      [{ text: `🔥 Streak: ${userData.streak} days`, callback_data: "streak_info" }]
+      [{ text: `🔥 Streak: ${userData.streak} days`, callback_data: "streak_info" }],
+      [{ text: "✅ Done", callback_data: "done_and_delete" }]
     ]
   };
   
   const options = { parse_mode: 'Markdown', reply_markup: keyboard };
 
   if (messageId) {
-    // If we have a messageId, edit the existing message.
     bot.editMessageText(text, { ...options, chat_id: chatId, message_id: messageId });
   } else {
-    // Otherwise, send a new one.
     bot.sendMessage(chatId, text, options);
   }
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText to avoid creating a new message.
- */
 function showEmotionSelection(chatId, userId, messageId) {
   const userData = getUserData(userId);
   userData.currentState = 'select_emotion';
@@ -125,7 +136,7 @@ function showEmotionSelection(chatId, userId, messageId) {
   const keyboard = {
     inline_keyboard: emotions.map(emotion => [
       { text: `${emotion.emoji} ${emotion.name}`, callback_data: `emotion_${emotion.name}` }
-    ]).concat([[{ text: "⬅️ Back", callback_data: "back_to_home" }]]) // Added back button
+    ]).concat([[{ text: "⬅️ Back", callback_data: "back_to_home" }]])
   };
   
   bot.editMessageText("Select your main emotion:", {
@@ -135,9 +146,6 @@ function showEmotionSelection(chatId, userId, messageId) {
   });
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText.
- */
 function showMultipleEmotionSelection(chatId, userId, messageId) {
   const userData = getUserData(userId);
   userData.currentState = 'select_multiple';
@@ -171,9 +179,6 @@ function showMultipleEmotionSelection(chatId, userId, messageId) {
   });
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText.
- */
 function showIntensitySelection(chatId, userId, emotionName, messageId) {
   const userData = getUserData(userId);
   const emotion = emotions.find(e => e.name === emotionName);
@@ -195,9 +200,6 @@ function showIntensitySelection(chatId, userId, emotionName, messageId) {
   });
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText.
- */
 function showJournalView(chatId, userId, messageId) {
   const userData = getUserData(userId);
   userData.currentState = 'journal';
@@ -233,8 +235,6 @@ function showJournalView(chatId, userId, messageId) {
   });
 }
 
-// --- UNMODIFIED FUNCTIONS (Behavior is fine as is) ---
-
 function saveJournalEntry(chatId, userId, text) {
   const userData = getUserData(userId);
   
@@ -247,12 +247,13 @@ function saveJournalEntry(chatId, userId, text) {
     emotions: userData.selectedEmotion ? [userData.selectedEmotion.name] : userData.multipleEmotions.map(e => e.name),
     intensity: userData.selectedEmotion ? userData.selectedIntensity : undefined,
     text: text || '',
-    date: new Date().toLocaleString()
+    date: new Date().toISOString()
   };
   
   const newHistory = [...userData.history, newEntry];
   userData.history = newHistory;
   
+  // Update streak
   const today = new Date().toDateString();
   const lastEntryDate = userData.history.length > 1 ? new Date(userData.history[userData.history.length - 2].date).toDateString() : null;
   
@@ -264,26 +265,92 @@ function saveJournalEntry(chatId, userId, text) {
   
   const achievementMessage = checkAchievements(userId, newHistory);
   
+  // Reset journal state
   userData.selectedEmotion = null;
   userData.multipleEmotions = [];
   userData.journalText = '';
-  //currentState is set in showHomeView
+  saveUserData(userId, userData);
   
-  // Send a confirmation message. This is intentionally a *new* message.
-  bot.sendMessage(chatId, "✅ Journal entry saved successfully!", { reply_markup: { remove_keyboard: true } });
+  // Send confirmation
+  bot.sendMessage(chatId, "✅ Journal entry saved successfully!");
   
-  // Show any achievement unlocked message
+  // Show achievement if unlocked
   if (achievementMessage) {
     bot.sendMessage(chatId, achievementMessage);
   }
   
-  // Reset by sending a new home screen.
+  // Return to home view
   showHomeView(chatId, userId, userData);
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText.
- */
+function startBreathingExercise(chatId, userId, messageId) {
+  const userData = getUserData(userId);
+  userData.currentState = 'breathing';
+  saveUserData(userId, userData);
+
+  bot.editMessageText("🧘 *Breathing Exercise*\n\nGet ready to begin...", {
+    chat_id: chatId,
+    message_id: messageId,
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [[{ text: "Stop Exercise", callback_data: "stop_breathing" }]]
+    }
+  });
+
+  const steps = [
+    { text: "Breathe in... 🌬️", delay: 4000 },
+    { text: "Hold... ✋", delay: 4000 },
+    { text: "Breathe out... 💨", delay: 4000 },
+    { text: "Hold... ✋", delay: 4000 }
+  ];
+
+  let currentStep = 0;
+  const totalCycles = 3;
+  let cyclesCompleted = 0;
+
+  function updateBreathingMessage() {
+    if (currentStep >= steps.length) {
+      currentStep = 0;
+      cyclesCompleted++;
+    }
+
+    if (cyclesCompleted >= totalCycles) {
+      userData.breathingCount += 1;
+      saveUserData(userId, userData);
+
+      if (userData.breathingCount >= 50 && !userData.unlockedAchievements.includes("Zen Master")) {
+        userData.unlockedAchievements.push("Zen Master");
+        saveUserData(userId, userData);
+        bot.sendMessage(chatId, "🏆 Achievement unlocked: Zen Master! 🧘");
+      }
+
+      bot.editMessageText("✅ Breathing exercise completed! Great job! 🧘", {
+        chat_id: chatId,
+        message_id: messageId,
+        reply_markup: {
+          inline_keyboard: [[{ text: "Back to Home", callback_data: "back_to_home" }]]
+        }
+      });
+      return;
+    }
+
+    const step = steps[currentStep];
+    bot.editMessageText(`🧘 *Breathing Exercise*\n\n${step.text}\n\nCycle ${cyclesCompleted + 1}/${totalCycles}`, {
+      chat_id: chatId,
+      message_id: messageId,
+      parse_mode: 'Markdown',
+      reply_markup: {
+        inline_keyboard: [[{ text: "Stop Exercise", callback_data: "stop_breathing" }]]
+      }
+    });
+
+    currentStep++;
+    setTimeout(updateBreathingMessage, step.delay);
+  }
+
+  setTimeout(updateBreathingMessage, 1000);
+}
+
 function showHistoryView(chatId, userId, messageId) {
   const userData = getUserData(userId);
   userData.currentState = 'history';
@@ -317,7 +384,7 @@ function showHistoryView(chatId, userId, messageId) {
       }).join(' ');
       const intensityText = entry.intensity !== undefined && entry.emotions.length === 1 ? ` (${emotions.find(e => e.name === entry.emotions[0]).intensity[entry.intensity]})` : '';
       const textPreview = entry.text ? `\n${entry.text.substring(0, 50)}${entry.text.length > 50 ? '...' : ''}` : '';
-      entriesMessage += `\n${emotionsText}${intensityText} - ${entry.date}${textPreview}`;
+      entriesMessage += `\n${emotionsText}${intensityText} - ${new Date(entry.date).toLocaleString()}${textPreview}`;
     });
     text = statsMessage + entriesMessage;
   }
@@ -332,9 +399,6 @@ function showHistoryView(chatId, userId, messageId) {
   });
 }
 
-/**
- * MODIFIED: Now uses bot.editMessageText.
- */
 function showAchievementsView(chatId, userId, messageId) {
   const userData = getUserData(userId);
   userData.currentState = 'achievements';
@@ -356,27 +420,21 @@ function showAchievementsView(chatId, userId, messageId) {
   });
 }
 
-// Breathing exercise is kept as-is, since it sends a sequence of messages.
-function startBreathingExercise(chatId, userId) {
-    // This part is intentionally left to send new messages to guide the user through timed steps.
-    // However, you could edit the initial message to start the exercise.
-}
-
-
-// --- MODIFIED CALLBACK QUERY HANDLER ---
+// --- CALLBACK QUERY HANDLER ---
 bot.on('callback_query', (callbackQuery) => {
   const message = callbackQuery.message;
   const chatId = message.chat.id;
   const userId = callbackQuery.from.id;
   const data = callbackQuery.data;
-  
-  // CORE CHANGE: Get the messageId here to pass to view functions
-  const messageId = message.message_id; 
+  const messageId = message.message_id;
   
   const userData = getUserData(userId);
   
-  // Use a switch statement for cleaner logic
   switch (true) {
+    case data === 'start_tracking':
+      showHomeView(chatId, userId, userData, messageId);
+      break;
+      
     case data === 'back_to_home':
       showHomeView(chatId, userId, userData, messageId);
       break;
@@ -440,6 +498,17 @@ bot.on('callback_query', (callbackQuery) => {
       showHomeView(chatId, userId, userData, messageId);
       break;
       
+    case data === 'done_and_delete':
+      bot.deleteMessage(chatId, messageId)
+        .then(() => {
+          userData.selectedEmotion = null;
+          userData.multipleEmotions = [];
+          userData.journalText = '';
+          saveUserData(userId, userData);
+        })
+        .catch(err => console.error("Error deleting message:", err));
+      break;
+      
     case data === 'view_history':
       showHistoryView(chatId, userId, messageId);
       break;
@@ -449,20 +518,16 @@ bot.on('callback_query', (callbackQuery) => {
       break;
       
     case data === 'breathing_exercise':
-      // This is an exception - we'll send a new message to start the exercise
-      bot.answerCallbackQuery(callbackQuery.id);
-      startBreathingExercise(chatId, userId);
+      startBreathingExercise(chatId, userId, messageId);
       break;
 
     case data === 'stop_breathing':
-      // Handling for stopping exercise remains the same
       if (userData.breathingInterval) {
         clearInterval(userData.breathingInterval);
       }
       userData.currentState = 'home';
       saveUserData(userId, userData);
-      bot.editMessageText("Breathing exercise stopped.", { chat_id: chatId, message_id: messageId });
-      showHomeView(chatId, userId, getUserData(userId)); // Send new home view
+      showHomeView(chatId, userId, userData, messageId);
       break;
 
     case data === 'streak_info':
@@ -478,7 +543,7 @@ bot.on('callback_query', (callbackQuery) => {
   }
 });
 
-// --- TEXT MESSAGE HANDLER (No Changes) ---
+// --- TEXT MESSAGE HANDLER ---
 bot.on('message', (msg) => {
   if (!msg.text || msg.text.startsWith('/')) return;
   
@@ -487,9 +552,8 @@ bot.on('message', (msg) => {
   const userData = getUserData(userId);
   
   if (userData.currentState === 'journal') {
-    // This function sends its own confirmation and a new home view
     saveJournalEntry(chatId, userId, msg.text);
   }
 });
 
-console.log("Emotions in Check bot is running (with message editing)...");
+console.log("Emotions in Check bot is running...");
